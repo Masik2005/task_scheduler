@@ -8,6 +8,8 @@
 class Task;
 class TaskService;
 
+// Менеджер напоминаний (Observer Pattern)
+// Отслеживает изменения задач и автоматически управляет напоминаниями
 class ReminderManager : public QObject
 {
     Q_OBJECT

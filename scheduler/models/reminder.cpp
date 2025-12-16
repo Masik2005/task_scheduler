@@ -28,6 +28,8 @@ QDateTime Reminder::getReminderTime() const
     return QDateTime();
 }
 
+// Активирует напоминание - вычисляет время до срабатывания и запускает таймер
+// Если время уже прошло - эмитирует сигнал сразу
 void Reminder::activate()
 {
     if (!m_task || m_task->isCompleted() || !m_timer) {
@@ -41,6 +43,7 @@ void Reminder::activate()
     
     QDateTime now = QDateTime::currentDateTime();
     
+    // Если дедлайн уже прошел - показываем напоминание сразу
     if (deadline <= now) {
         QTimer::singleShot(0, this, [this]() {
             emit reminderTriggered(this);
@@ -53,6 +56,7 @@ void Reminder::activate()
         return;
     }
     
+    // Если время напоминания уже прошло - показываем сразу
     if (m_reminderTime <= now) {
         QTimer::singleShot(0, this, [this]() {
             emit reminderTriggered(this);
@@ -60,6 +64,7 @@ void Reminder::activate()
         return;
     }
     
+    // Запускаем таймер на вычисленное время (ограничение QTimer::start)
     int msecs = now.msecsTo(m_reminderTime);
     if (msecs > 0 && msecs < 2147483647) {
         m_timer->start(msecs);

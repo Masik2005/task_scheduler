@@ -11,11 +11,12 @@ TaskRepository::TaskRepository(QObject *parent)
 void TaskRepository::add(Task *task)
 {
     if (task && !m_tasks.contains(task)) {
+        // Автоматически присваиваем ID если не задан
         if (task->getId() < 0) {
             task->setId(m_nextTaskId++);
         }
         m_tasks.append(task);
-        emit taskAdded(task);
+        emit taskAdded(task); // Уведомляем подписчиков (TaskService, UI)
     }
 }
 

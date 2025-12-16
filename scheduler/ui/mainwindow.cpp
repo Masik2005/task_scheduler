@@ -3,6 +3,7 @@
 #include "usermanager.h"
 #include "projectmanager.h"
 #include "tasklistwidget.h"
+#include "appstyles.h"
 #include "../managers/command.h"
 #include "../models/task.h"
 #include "../models/project.h"
@@ -32,7 +33,6 @@
 #include <QStyle>
 #include <QApplication>
 #include <QCloseEvent>
-#include <algorithm>
 #include <QLineEdit>
 #include <QComboBox>
 #include <QDateEdit>
@@ -55,14 +55,18 @@ MainWindow::MainWindow(QWidget *parent)
 {
     setupUi(this);
     
-    TaskRepository *taskRepo = new TaskRepository(this);
-    UserRepository *userRepo = new UserRepository(this);
-    ProjectRepository *projectRepo = new ProjectRepository(this);
+    // Создаем репозитории и сервис
+    // Используем интерфейсы (ITaskRepository, IUserRepository, IProjectRepository) для соблюдения DIP
+    ITaskRepository *taskRepo = new TaskRepository(this);
+    IUserRepository *userRepo = new UserRepository(this);
+    IProjectRepository *projectRepo = new ProjectRepository(this);
     m_taskService = new TaskService(taskRepo, userRepo, projectRepo, this);
     
+    // Создаем менеджеры
     m_commandManager = new CommandManager(this);
     m_reminderManager = new ReminderManager(m_taskService, this);
     
+    // Настраиваем системный трей для уведомлений
     if (QSystemTrayIcon::isSystemTrayAvailable()) {
         m_trayIcon = new QSystemTrayIcon(this);
         m_trayIcon->setIcon(QApplication::style()->standardIcon(QStyle::SP_ComputerIcon));
@@ -70,6 +74,7 @@ MainWindow::MainWindow(QWidget *parent)
         m_trayIcon->show();
     }
     
+    // Подключаем сигналы для связи компонентов
     connect(m_reminderManager, &ReminderManager::reminderNotification,
             this, &MainWindow::onReminderNotification);
     connect(m_commandManager, &CommandManager::undoAvailable,
@@ -82,24 +87,18 @@ MainWindow::MainWindow(QWidget *parent)
     setupToolBar();
     setupStatusBar();
     
+    // Загружаем данные или создаем тестовые
     bool dataLoaded = loadData();
 
     if (!dataLoaded) {
-        if (m_taskService->getAllUsers().isEmpty()) {
-            User *user1 = new User("Иван Иванов");
-            User *user2 = new User("Мария Петрова");
-            m_taskService->addUser(user1);
-            m_taskService->addUser(user2);
-        }
-        if (m_taskService->getAllProjects().isEmpty()) {
-            Project *proj1 = new Project("Разработка", "Проект разработки ПО");
-            Project *proj2 = new Project("Тестирование", "Проект тестирования");
-            m_taskService->addProject(proj1);
-            m_taskService->addProject(proj2);
+        // Инициализируем тестовые данные через TaskService
+        if (m_taskService) {
+            m_taskService->initializeDefaultData();
         }
         refreshTaskList();
     }
     
+    // Восстанавливаем напоминания для всех незавершенных задач
     if (m_reminderManager) {
         m_reminderManager->removeAllReminders();
         for (Task *task : m_taskService->getAllTasks()) {
@@ -176,7 +175,7 @@ void MainWindow::setupUI()
     m_taskList->setItemDelegate(delegate);
     m_taskList->setAlternatingRowColors(false);
     m_taskList->setMinimumWidth(600);
-    connect(m_taskList, &QListWidget::itemDoubleClicked, this, &MainWindow::onTaskDoubleClicked);
+    // Двойной клик обрабатывается через сигнал TaskListWidget
     connect(m_taskList, &QListWidget::itemSelectionChanged, this, &MainWindow::updateCompleteButtonText);
     
     QVBoxLayout *mainLayout = qobject_cast<QVBoxLayout*>(QMainWindow::centralWidget()->layout());
@@ -189,10 +188,30 @@ void MainWindow::setupUI()
         }
     }
     
-    connect(addButton, &QPushButton::clicked, this, &MainWindow::onAddTask);
-    connect(editButton, &QPushButton::clicked, this, &MainWindow::onEditTask);
-    connect(deleteButton, &QPushButton::clicked, this, &MainWindow::onDeleteTask);
-    connect(completeButton, &QPushButton::clicked, this, &MainWindow::onCompleteTask);
+    // Подключаем кнопки к методам TaskListWidget
+    if (addButton) {
+        connect(addButton, &QPushButton::clicked, m_taskList, &TaskListWidget::addTask);
+    }
+    if (editButton) {
+        connect(editButton, &QPushButton::clicked, m_taskList, &TaskListWidget::editTask);
+    }
+    if (deleteButton) {
+        connect(deleteButton, &QPushButton::clicked, m_taskList, &TaskListWidget::deleteTask);
+    }
+    if (completeButton) {
+        connect(completeButton, &QPushButton::clicked, m_taskList, &TaskListWidget::completeTask);
+    }
+    
+    // Устанавливаем зависимости для TaskListWidget
+    m_taskList->setDependencies(m_taskService, m_commandManager, m_reminderManager);
+    
+    // Подключаем сигналы TaskListWidget для обновления UI
+    connect(m_taskList, &TaskListWidget::taskListChanged, this, &MainWindow::refreshTaskList);
+    connect(m_taskList, &TaskListWidget::taskDoubleClicked, this, [this]() {
+        if (m_taskList) {
+            m_taskList->editTask();
+        }
+    });
 }
 
 void MainWindow::setupMenuBar()
@@ -220,9 +239,9 @@ void MainWindow::setupToolBar()
 {
     QToolBar *toolBar = addToolBar("Главная");
     toolBar->setMovable(false);
-    toolBar->addAction("Добавить", this, &MainWindow::onAddTask);
-    toolBar->addAction("Редактировать", this, &MainWindow::onEditTask);
-    toolBar->addAction("Удалить", this, &MainWindow::onDeleteTask);
+    toolBar->addAction("Добавить", m_taskList, &TaskListWidget::addTask);
+    toolBar->addAction("Редактировать", m_taskList, &TaskListWidget::editTask);
+    toolBar->addAction("Удалить", m_taskList, &TaskListWidget::deleteTask);
     toolBar->addSeparator();
     toolBar->addAction(m_undoAction);
     toolBar->addAction(m_redoAction);
@@ -233,313 +252,26 @@ void MainWindow::setupStatusBar()
     updateStatusBar();
 }
 
+// Применяет фильтры и сортировку, затем отображает задачи в списке
+// Делегирует всю логику в TaskListWidget
 void MainWindow::updateTaskList()
 {
-    if (!m_taskList || !m_taskService || !searchEdit || !priorityFilter || 
-        !projectFilter || !userFilter || !sortCombo) {
+    if (!m_taskList || !m_taskService) return;
+    
+    // Проверяем наличие всех необходимых UI элементов
+    if (!searchEdit || !priorityFilter || !projectFilter || !userFilter || !sortCombo) {
         return;
     }
     
-    m_taskList->clear();
-    
-    QList<Task*> tasks = m_taskService->getAllTasks();
-    
-    QString searchText = searchEdit->text().trimmed();
-    if (!searchText.isEmpty()) {
-        QList<Task*> searchResults = m_taskService->searchByTitle(searchText);
-        QList<Task*> filtered;
-        for (Task *task : tasks) {
-            if (searchResults.contains(task)) {
-                filtered.append(task);
-            }
-        }
-        tasks = filtered;
-    }
-    
-    int priorityFilterValue = priorityFilter->currentData().toInt();
-    if (priorityFilterValue >= 0) {
-        QList<Task*> priorityResults = m_taskService->filterByPriority(static_cast<Priority>(priorityFilterValue));
-        QList<Task*> filtered;
-        for (Task *task : tasks) {
-            if (priorityResults.contains(task)) {
-                filtered.append(task);
-            }
-        }
-        tasks = filtered;
-    }
-    
-    int projectIndex = projectFilter->currentIndex();
-    if (projectIndex > 0 && projectIndex <= m_taskService->getAllProjects().size()) {
-        Project *project = m_taskService->getAllProjects()[projectIndex - 1];
-        QList<Task*> projectResults = m_taskService->filterByProject(project);
-        QList<Task*> filtered;
-        for (Task *task : tasks) {
-            if (projectResults.contains(task)) {
-                filtered.append(task);
-            }
-        }
-        tasks = filtered;
-    }
-    
-    int userIndex = userFilter->currentIndex();
-    if (userIndex > 0 && userIndex <= m_taskService->getAllUsers().size()) {
-        User *user = m_taskService->getAllUsers()[userIndex - 1];
-        QList<Task*> userResults = m_taskService->filterByUser(user);
-        QList<Task*> filtered;
-        for (Task *task : tasks) {
-            if (userResults.contains(task)) {
-                filtered.append(task);
-            }
-        }
-        tasks = filtered;
-    }
-    
-    if (dateFilter && m_dateFilterEnabled && dateFilter->date().isValid()) {
-        QDateTime filterDate = QDateTime(dateFilter->date(), QTime(0, 0));
-        QList<Task*> dateResults = m_taskService->filterByDate(filterDate);
-        QList<Task*> filtered;
-        for (Task *task : tasks) {
-            if (dateResults.contains(task)) {
-                filtered.append(task);
-            }
-        }
-        tasks = filtered;
-    }
-    
-    bool showCompleted = showCompletedCheckBox ? showCompletedCheckBox->isChecked() : true;
-    if (!showCompleted) {
-        QList<Task*> filtered;
-        for (Task *task : tasks) {
-            if (!task->isCompleted()) {
-                filtered.append(task);
-            }
-        }
-        tasks = filtered;
-    }
-    
-    enum SortCriteria {
-        SortByDate = 0,
-        SortByPriority = 1,
-        SortByTitle = 2,
-        SortByProject = 3
-    };
-    
-    SortCriteria criteria = static_cast<SortCriteria>(
-        sortCombo->currentData().toInt());
-    
-    std::sort(tasks.begin(), tasks.end(), [criteria](Task *a, Task *b) {
-        bool aCompleted = a->isCompleted();
-        bool bCompleted = b->isCompleted();
-        
-        if (aCompleted != bCompleted) {
-            return !aCompleted;
-        }
-        
-        bool less;
-        switch (criteria) {
-        case SortByDate:
-            less = a->getDeadline() < b->getDeadline();
-            break;
-        case SortByPriority:
-            less = static_cast<int>(a->getPriority()) < static_cast<int>(b->getPriority());
-            break;
-        case SortByTitle:
-            less = a->getTitle() < b->getTitle();
-            break;
-        case SortByProject:
-            {
-                QString projA = a->getProject() ? a->getProject()->getName() : "";
-                QString projB = b->getProject() ? b->getProject()->getName() : "";
-                less = projA < projB;
-            }
-            break;
-        default:
-            less = false;
-        }
-        return less;
-    });
-    
-    for (Task *task : tasks) {
-        QListWidgetItem *item = new QListWidgetItem();
-        m_taskList->addItem(item);
-        showTaskInList(task, item);
-    }
+    // Делегируем формирование фильтров и обновление списка в TaskListWidget
+    m_taskList->refreshTaskListWithFilters(searchEdit, priorityFilter, projectFilter, 
+                                            userFilter, dateFilter, m_dateFilterEnabled,
+                                            showCompletedCheckBox, sortCombo);
     
     updateCompleteButtonText();
 }
 
-void MainWindow::showTaskInList(Task *task, QListWidgetItem *item)
-{
-    QString priorityText = Task::priorityToString(task->getPriority());
-    
-    QString title = task->getTitle();
-    if (task->isCompleted()) {
-        title = QString("✓ %1").arg(title);
-    }
-    
-    QString text = QString("[%1] %2")
-                   .arg(priorityText)
-                   .arg(title);
-    
-    QString deadlineStr = task->getDeadline().toString("dd.MM.yyyy HH:mm");
-    text += QString(" | Дедлайн: %1").arg(deadlineStr);
-    
-    if (task->getProject()) {
-        text += QString(" | 📁 %1").arg(task->getProject()->getName());
-    }
-    if (task->getOwner()) {
-        text += QString(" | 👤 %1").arg(task->getOwner()->getName());
-    }
-    
-    item->setText(text);
-    item->setData(Qt::UserRole, QVariant::fromValue(static_cast<void*>(task)));
-    
-    QColor bgColor, textColor;
-    
-    if (task->isCompleted()) {
-        bgColor = QColor("#ffffff");
-        textColor = QColor("#7f8c8d");
-    } else {
-        switch (task->getPriority()) {
-        case Priority::Low:
-            bgColor = QColor("#d5f4e6");
-            textColor = QColor("#2c3e50");
-            break;
-        case Priority::Medium:
-            bgColor = QColor("#fff9c4");
-            textColor = QColor("#2c3e50");
-            break;
-        case Priority::High:
-            bgColor = QColor("#ffcdd2");
-            textColor = QColor("#2c3e50");
-            break;
-        default:
-            bgColor = QColor("#ffffff");
-            textColor = QColor("#2c3e50");
-        }
-    }
-    
-    QBrush bgBrush(bgColor);
-    QBrush textBrush(textColor);
-    
-    item->setData(Qt::BackgroundRole, bgBrush);
-    item->setData(Qt::ForegroundRole, textBrush);
-    item->setBackground(bgBrush);
-    item->setForeground(textBrush);
-    
-    int itemWidth = m_taskList ? qMax(m_taskList->width() - 20, 550) : 550;
-    item->setSizeHint(QSize(itemWidth, 60));
-}
 
-Task* MainWindow::getSelectedTask() const
-{
-    QListWidgetItem *item = m_taskList->currentItem();
-    if (item) {
-        return static_cast<Task*>(item->data(Qt::UserRole).value<void*>());
-    }
-    return nullptr;
-}
-
-void MainWindow::onAddTask()
-{
-    TaskEditorDialog *editor = new TaskEditorDialog(m_taskService, this);
-    
-    if (editor->exec() == QDialog::Accepted) {
-        Task *task = editor->getCreatedTask();
-        if (task) {
-            AddTaskCommand *cmd = new AddTaskCommand(m_taskService, task);
-            m_commandManager->executeCommand(cmd);
-            if (m_reminderManager && task) {
-                m_reminderManager->addReminder(task, task->getReminderMinutes());
-            }
-            refreshTaskList();
-        }
-    }
-    delete editor;
-}
-
-void MainWindow::onEditTask()
-{
-    Task *task = getSelectedTask();
-    if (!task) {
-        QMessageBox::information(this, "Информация", "Выберите задачу для редактирования");
-        return;
-    }
-    
-    TaskEditorDialog *editor = new TaskEditorDialog(m_taskService, this);
-    editor->setTask(task);
-    
-    QString oldTitle = task->getTitle();
-    QDateTime oldDeadline = task->getDeadline();
-    Priority oldPriority = task->getPriority();
-    
-    if (editor->exec() == QDialog::Accepted) {
-        Task *editedTask = editor->getCreatedTask();
-        if (editedTask) {
-            EditTaskCommand *cmd = new EditTaskCommand(
-                task,
-                oldTitle, editedTask->getTitle(),
-                oldDeadline, editedTask->getDeadline(),
-                oldPriority, editedTask->getPriority()
-            );
-            m_commandManager->executeCommand(cmd);
-            task->setDescription(editedTask->getDescription());
-            task->setProject(editedTask->getProject());
-            task->setOwner(editedTask->getOwner());
-            task->setReminderMinutes(editedTask->getReminderMinutes());
-            if (m_reminderManager && task) {
-                m_reminderManager->addReminder(task, task->getReminderMinutes());
-            }
-            refreshTaskList();
-        }
-    }
-    delete editor;
-}
-
-void MainWindow::onDeleteTask()
-{
-    Task *task = getSelectedTask();
-    if (!task) {
-        QMessageBox::information(this, "Информация", "Выберите задачу для удаления");
-        return;
-    }
-    
-    if (QMessageBox::question(this, "Подтверждение", 
-                              QString("Удалить задачу '%1'?").arg(task->getTitle())) == QMessageBox::Yes) {
-        RemoveTaskCommand *cmd = new RemoveTaskCommand(m_taskService, task);
-        m_commandManager->executeCommand(cmd);
-        refreshTaskList();
-    }
-}
-
-void MainWindow::onCompleteTask()
-{
-    Task *task = getSelectedTask();
-    if (!task) {
-        QMessageBox::information(this, "Информация", "Выберите задачу");
-        return;
-    }
-    
-    bool completed = !task->isCompleted();
-    CompleteTaskCommand *cmd = new CompleteTaskCommand(task, completed);
-    m_commandManager->executeCommand(cmd);
-    
-    if (m_reminderManager && task) {
-        if (completed) {
-            m_reminderManager->removeReminder(task);
-        } else {
-            m_reminderManager->addReminder(task, task->getReminderMinutes());
-        }
-    }
-    
-    refreshTaskList();
-}
-
-void MainWindow::onTaskDoubleClicked(QListWidgetItem *item)
-{
-    Q_UNUSED(item);
-    onEditTask();
-}
 
 void MainWindow::onSearchTextChanged(const QString &text)
 {
@@ -559,13 +291,23 @@ void MainWindow::onSortChanged()
 
 void MainWindow::onUserManager()
 {
+    showUserManagerDialog();
+}
+
+void MainWindow::onProjectManager()
+{
+    showProjectManagerDialog();
+}
+
+void MainWindow::showUserManagerDialog()
+{
     UserManagerDialog *dialog = new UserManagerDialog(m_taskService, this);
     dialog->exec();
     delete dialog;
     refreshTaskList();
 }
 
-void MainWindow::onProjectManager()
+void MainWindow::showProjectManagerDialog()
 {
     ProjectManagerDialog *dialog = new ProjectManagerDialog(m_taskService, this);
     dialog->exec();
@@ -573,86 +315,49 @@ void MainWindow::onProjectManager()
     refreshTaskList();
 }
 
+// Импорт задач из JSON файла
+// Использует TaskService для работы с файлом, затем создает команды для поддержки undo/redo
 void MainWindow::onImportTasks()
 {
     QString fileName = QFileDialog::getOpenFileName(this, "Импорт задач", "", "JSON Files (*.json)");
     if (fileName.isEmpty()) return;
     
-    QFile file(fileName);
-    if (!file.open(QIODevice::ReadOnly)) {
-        QMessageBox::critical(this, "Ошибка", "Не удалось открыть файл");
+    int totalTasks = m_taskService->getAllTasks().size();
+    
+    // Импортируем через TaskService (создает пользователей/проекты при необходимости)
+    int imported = m_taskService->importTasksFromFile(fileName, true);
+    
+    if (imported < 0) {
+        QMessageBox::critical(this, "Ошибка", "Не удалось импортировать файл");
         return;
     }
     
-    QJsonDocument doc = QJsonDocument::fromJson(file.readAll());
-    file.close();
-    
-    if (!doc.isArray()) {
-        QMessageBox::critical(this, "Ошибка", "Неверный формат файла");
-        return;
-    }
-    
-    QJsonArray array = doc.array();
-    int imported = 0;
-    int skipped = 0;
-    
-    for (const QJsonValue &value : array) {
-        QJsonObject obj = value.toObject();
-        QString title = obj["title"].toString();
-        QDateTime deadline = QDateTime::fromString(obj["deadline"].toString(), Qt::ISODate);
-        Priority priority = Task::stringToPriority(obj["priority"].toString());
-        
-        QString ownerName = obj["owner"].toString();
-        User *owner = m_taskService->findUserByName(ownerName);
-        if (!owner) {
-            owner = new User(ownerName);
-            m_taskService->addUser(owner);
-        }
-        
-        QString projectName = obj["project"].toString();
-        Project *project = nullptr;
-        if (!projectName.isEmpty()) {
-            project = m_taskService->findProjectByName(projectName);
-            if (!project) {
-                project = new Project(projectName);
-                m_taskService->addProject(project);
-            }
-        }
-        
-        bool isDuplicate = false;
-        if (m_taskService) {
-            QList<Task*> allTasks = m_taskService->getAllTasks();
-            for (Task *existingTask : allTasks) {
-                if (existingTask->getTitle() == title &&
-                    existingTask->getDeadline() == deadline &&
-                    existingTask->getOwner() == owner) {
-                    isDuplicate = true;
-                    break;
-                }
-            }
-        }
-        
-        if (isDuplicate) {
-            skipped++;
-            continue;
-        }
-        
-        int reminderMinutes = obj["reminderMinutes"].toInt(60);
-        if (reminderMinutes < 2) reminderMinutes = 2;
-        Task *task = new Task(title, deadline, priority, owner, project, -1, reminderMinutes);
-        task->setDescription(obj["description"].toString());
-        task->setCompleted(obj["completed"].toBool());
-        
-        AddTaskCommand *cmd = new AddTaskCommand(m_taskService, task);
+    // Выполняем импорт через команды для поддержки undo/redo
+    QList<Task*> allTasks = m_taskService->getAllTasks();
+    for (int i = totalTasks; i < allTasks.size(); ++i) {
+        AddTaskCommand *cmd = new AddTaskCommand(m_taskService, allTasks[i]);
         m_commandManager->executeCommand(cmd);
-        imported++;
+        // Создаем напоминания для импортированных задач
+        if (m_reminderManager && allTasks[i]) {
+            m_reminderManager->addReminder(allTasks[i], allTasks[i]->getReminderMinutes());
+        }
     }
     
-    QString message = QString("Импортировано задач: %1").arg(imported);
-    if (skipped > 0) {
-        message += QString("\nПропущено дубликатов: %1").arg(skipped);
+    // Получаем информацию о пропущенных дубликатах из исходного файла
+    QFile file(fileName);
+    if (file.open(QIODevice::ReadOnly)) {
+        QJsonDocument doc = QJsonDocument::fromJson(file.readAll());
+        file.close();
+        if (doc.isArray()) {
+            int skipped = doc.array().size() - imported;
+            QString message = QString("Импортировано задач: %1").arg(imported);
+            if (skipped > 0) {
+                message += QString("\nПропущено дубликатов: %1").arg(skipped);
+            }
+            QMessageBox::information(this, "Импорт", message);
+        }
     }
-    QMessageBox::information(this, "Импорт", message);
+    
     refreshTaskList();
 }
 
@@ -661,31 +366,13 @@ void MainWindow::onExportTasks()
     QString fileName = QFileDialog::getSaveFileName(this, "Экспорт задач", "", "JSON Files (*.json)");
     if (fileName.isEmpty()) return;
     
-    QJsonArray array;
-    for (Task *task : m_taskService->getAllTasks()) {
-        QJsonObject obj;
-        obj["title"] = task->getTitle();
-        obj["description"] = task->getDescription();
-        obj["deadline"] = task->getDeadline().toString(Qt::ISODate);
-        obj["priority"] = Task::priorityToString(task->getPriority());
-        obj["completed"] = task->isCompleted();
-        obj["owner"] = task->getOwner() ? task->getOwner()->getName() : "";
-        obj["project"] = task->getProject() ? task->getProject()->getName() : "";
-        obj["reminderMinutes"] = task->getReminderMinutes();
-        array.append(obj);
-    }
-    
-    QJsonDocument doc(array);
-    QFile file(fileName);
-    if (!file.open(QIODevice::WriteOnly)) {
+    if (!m_taskService->exportTasksToFile(fileName)) {
         QMessageBox::critical(this, "Ошибка", "Не удалось сохранить файл");
         return;
     }
     
-    file.write(doc.toJson());
-    file.close();
-    
-    QMessageBox::information(this, "Экспорт", QString("Экспортировано задач: %1").arg(array.size()));
+    int taskCount = m_taskService->getAllTasks().size();
+    QMessageBox::information(this, "Экспорт", QString("Экспортировано задач: %1").arg(taskCount));
 }
 
 void MainWindow::onUndo()
@@ -716,107 +403,80 @@ void MainWindow::onReminderNotification(const QString &message, Task *task)
     refreshTaskList();
 }
 
+// Обновляет списки проектов и пользователей в фильтрах, затем обновляет список задач
 void MainWindow::refreshTaskList()
 {
-    if (!projectFilter || !userFilter || !m_taskService) {
+    if (!m_taskService || !m_taskList) {
         return;
     }
     
-    projectFilter->clear();
-    projectFilter->addItem("Все", -1);
-    for (Project *project : m_taskService->getAllProjects()) {
-        projectFilter->addItem(project->getName(), project->getId());
-    }
-    
-    userFilter->clear();
-    userFilter->addItem("Все", -1);
-    for (User *user : m_taskService->getAllUsers()) {
-        userFilter->addItem(user->getName(), user->getId());
+    // Делегируем обновление фильтров в TaskListWidget
+    if (projectFilter && userFilter) {
+        m_taskList->updateFilters(m_taskService, projectFilter, userFilter);
     }
     
     updateTaskList();
     updateStatusBar();
 }
 
+// Обновляет статус-бар со статистикой задач
 void MainWindow::updateStatusBar()
 {
     if (!m_taskService) {
         return;
     }
     
-    int total = m_taskService->getAllTasks().size();
-    int completed = m_taskService->filterCompleted(true).size();
+    // Получаем статистику из TaskService
+    TaskService::TaskStatistics stats = m_taskService->getStatistics();
     QMainWindow::statusBar()->showMessage(QString("Всего задач: %1 | Завершено: %2 | Активных: %3")
-                           .arg(total).arg(completed).arg(total - completed));
+                           .arg(stats.total).arg(stats.completed).arg(stats.active));
 }
 
 void MainWindow::updateCompleteButtonText()
 {
-    Task *task = getSelectedTask();
+    if (!completeButton) return;
+    
+    Task *task = m_taskList ? m_taskList->getSelectedTask() : nullptr;
     if (task) {
         if (task->isCompleted()) {
             completeButton->setText("Возобновить");
-            completeButton->setStyleSheet(
-                "QPushButton {"
-                "    background-color: #27ae60;"
-                "}"
-                "QPushButton:hover {"
-                "    background-color: #229954;"
-                "}"
-            );
+            completeButton->setStyleSheet(AppStyles::getButtonStyles("resume"));
         } else {
             completeButton->setText("Завершить");
-            completeButton->setStyleSheet(
-                "QPushButton {"
-                "    background-color: #9b59b6;"
-                "}"
-                "QPushButton:hover {"
-                "    background-color: #8e44ad;"
-                "}"
-            );
+            completeButton->setStyleSheet(AppStyles::getButtonStyles("complete"));
         }
     } else {
         completeButton->setText("Завершить");
+        completeButton->setStyleSheet(AppStyles::getButtonStyles("complete"));
     }
 }
 
+// Сохранение всех данных в JSON файл (вызывается при закрытии приложения)
+// Сохранение данных - делегируется в TaskService
 void MainWindow::saveData()
 {
-    if (!m_taskService) return;
-    QString path = QCoreApplication::applicationDirPath() + "/data.json";
-    QFile file(path);
-    if (!file.open(QIODevice::WriteOnly)) {
-        return;
+    if (m_taskService) {
+        m_taskService->saveToFile();
     }
-    QJsonObject obj = m_taskService->toJson();
-    QJsonDocument doc(obj);
-    file.write(doc.toJson());
-    file.close();
 }
 
+// Загрузка данных - делегируется в TaskService
 bool MainWindow::loadData()
 {
     if (!m_taskService) return false;
-    QString path = QCoreApplication::applicationDirPath() + "/data.json";
-    QFile file(path);
-    if (!file.exists()) {
-        return false;
-    }
-    if (!file.open(QIODevice::ReadOnly)) {
-        return false;
-    }
-    QJsonDocument doc = QJsonDocument::fromJson(file.readAll());
-    file.close();
-    if (!doc.isObject()) return false;
-    m_taskService->fromJson(doc.object());
     
-    refreshTaskList();
-    updateTaskList();
-    updateStatusBar();
+    bool loaded = m_taskService->loadFromFile();
     
-    return true;
+    if (loaded) {
+        refreshTaskList();
+        updateTaskList();
+        updateStatusBar();
+    }
+    
+    return loaded;
 }
 
+// Автоматическое сохранение данных при закрытии приложения
 void MainWindow::closeEvent(QCloseEvent *event)
 {
     saveData();
@@ -825,225 +485,21 @@ void MainWindow::closeEvent(QCloseEvent *event)
 
 void MainWindow::applyStyles()
 {
-    setStyleSheet(
-        "QMainWindow {"
-        "    background-color: #f5f5f5;"
-        "}"
-        
-        "QGroupBox {"
-        "    font-weight: bold;"
-        "    border: 2px solid #d0d0d0;"
-        "    border-radius: 8px;"
-        "    margin-top: 10px;"
-        "    padding-top: 15px;"
-        "    background-color: white;"
-        "}"
-        
-        "QGroupBox::title {"
-        "    subcontrol-origin: margin;"
-        "    subcontrol-position: top left;"
-        "    padding: 0 8px;"
-        "    color: #2c3e50;"
-        "    font-size: 12pt;"
-        "}"
-        
-        "QLineEdit {"
-        "    border: 2px solid #bdc3c7;"
-        "    border-radius: 5px;"
-        "    padding: 8px;"
-        "    font-size: 11pt;"
-        "    background-color: white;"
-        "}"
-        
-        "QLineEdit:focus {"
-        "    border: 2px solid #3498db;"
-        "    background-color: #ecf0f1;"
-        "}"
-        
-        "QComboBox {"
-        "    border: 2px solid #bdc3c7;"
-        "    border-radius: 5px;"
-        "    padding: 6px;"
-        "    font-size: 11pt;"
-        "    background-color: white;"
-        "    min-width: 120px;"
-        "}"
-        
-        "QComboBox:hover {"
-        "    border: 2px solid #3498db;"
-        "}"
-        
-        "QComboBox::drop-down {"
-        "    border: none;"
-        "    width: 25px;"
-        "}"
-        
-        "QComboBox::down-arrow {"
-        "    image: none;"
-        "    border-left: 5px solid transparent;"
-        "    border-right: 5px solid transparent;"
-        "    border-top: 6px solid #34495e;"
-        "    margin-right: 5px;"
-        "}"
-        
-        "QPushButton {"
-        "    background-color: #3498db;"
-        "    color: white;"
-        "    border: none;"
-        "    border-radius: 6px;"
-        "    padding: 10px 20px;"
-        "    font-size: 11pt;"
-        "    font-weight: bold;"
-        "    min-width: 100px;"
-        "}"
-        
-        "QPushButton:hover {"
-        "    background-color: #2980b9;"
-        "}"
-        
-        "QPushButton:pressed {"
-        "    background-color: #21618c;"
-        "}"
-        
-        "QPushButton:disabled {"
-        "    background-color: #bdc3c7;"
-        "    color: #7f8c8d;"
-        "}"
-        
-        "QListWidget {"
-        "    border: 2px solid #bdc3c7;"
-        "    border-radius: 8px;"
-        "    background-color: white;"
-        "    padding: 5px;"
-        "    font-size: 11pt;"
-        "}"
-        
-        "QListWidget::item {"
-        "    border: 1px solid #ecf0f1;"
-        "    border-radius: 5px;"
-        "    padding: 10px;"
-        "    margin: 3px;"
-        "    background-color: transparent;"
-        "}"
-        
-        "QListWidget::item:hover {"
-        "    border: 2px solid #3498db;"
-        "}"
-        
-        "QListWidget::item:selected {"
-        "    border: 2px solid #2980b9;"
-        "    background-color: rgba(52, 152, 219, 0.5);"
-        "}"
-        
-        "QLabel {"
-        "    color: #2c3e50;"
-        "    font-size: 11pt;"
-        "}"
-        
-        "QStatusBar {"
-        "    background-color: #34495e;"
-        "    color: white;"
-        "    font-size: 10pt;"
-        "    padding: 5px;"
-        "}"
-        
-        "QStatusBar QLabel {"
-        "    color: white;"
-        "    background-color: transparent;"
-        "}"
-        
-        "QMenuBar {"
-        "    background-color: #34495e;"
-        "    color: white;"
-        "    font-size: 11pt;"
-        "    padding: 5px;"
-        "}"
-        
-        "QMenuBar::item:selected {"
-        "    background-color: #3498db;"
-        "    border-radius: 3px;"
-        "}"
-        
-        "QMenu {"
-        "    background-color: white;"
-        "    border: 1px solid #bdc3c7;"
-        "    border-radius: 5px;"
-        "    padding: 5px;"
-        "}"
-        
-        "QMenu::item:selected {"
-        "    background-color: #3498db;"
-        "    color: white;"
-        "    border-radius: 3px;"
-        "}"
-        
-        "QToolBar {"
-        "    background-color: #ecf0f1;"
-        "    border: none;"
-        "    spacing: 5px;"
-        "    padding: 5px;"
-        "}"
-        
-        "QToolBar::separator {"
-        "    background-color: #bdc3c7;"
-        "    width: 2px;"
-        "    margin: 5px;"
-        "}"
-    );
+    setStyleSheet(AppStyles::getMainWindowStyles() + AppStyles::getButtonStyles(""));
     
     if (addButton) {
-        addButton->setStyleSheet(
-            "QPushButton {"
-            "    background-color: #27ae60;"
-            "}"
-            "QPushButton:hover {"
-            "    background-color: #229954;"
-            "}"
-            "QPushButton:pressed {"
-            "    background-color: #1e8449;"
-            "}"
-        );
+        addButton->setStyleSheet(AppStyles::getButtonStyles("add"));
     }
     
     if (editButton) {
-        editButton->setStyleSheet(
-            "QPushButton {"
-            "    background-color: #f39c12;"
-            "}"
-            "QPushButton:hover {"
-            "    background-color: #e67e22;"
-            "}"
-            "QPushButton:pressed {"
-            "    background-color: #d35400;"
-            "}"
-        );
+        editButton->setStyleSheet(AppStyles::getButtonStyles("edit"));
     }
     
     if (deleteButton) {
-        deleteButton->setStyleSheet(
-            "QPushButton {"
-            "    background-color: #e74c3c;"
-            "}"
-            "QPushButton:hover {"
-            "    background-color: #c0392b;"
-            "}"
-            "QPushButton:pressed {"
-            "    background-color: #a93226;"
-            "}"
-        );
+        deleteButton->setStyleSheet(AppStyles::getButtonStyles("delete"));
     }
     
     if (completeButton) {
-        completeButton->setStyleSheet(
-            "QPushButton {"
-            "    background-color: #9b59b6;"
-            "}"
-            "QPushButton:hover {"
-            "    background-color: #8e44ad;"
-            "}"
-            "QPushButton:pressed {"
-            "    background-color: #7d3c98;"
-            "}"
-        );
+        completeButton->setStyleSheet(AppStyles::getButtonStyles("complete"));
     }
 }

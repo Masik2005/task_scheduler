@@ -4,6 +4,8 @@
 #include "repositories.h"
 #include <QObject>
 
+// Реализация репозитория задач - хранит задачи в памяти (QList)
+// Эмитирует сигналы при изменениях для уведомления подписчиков
 class TaskRepository : public QObject, public ITaskRepository
 {
     Q_OBJECT

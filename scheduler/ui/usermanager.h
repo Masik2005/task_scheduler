@@ -10,6 +10,8 @@ class QLineEdit;
 class QPushButton;
 class QListWidget;
 
+// Диалог управления пользователями
+// Использует TaskService для проверки связанных задач при удалении
 class UserManagerDialog : public QDialog
 {
     Q_OBJECT

@@ -129,6 +129,7 @@ void ProjectManagerDialog::onDeleteProject()
     Project *project = static_cast<Project*>(item->data(Qt::UserRole).value<void*>());
     if (!project || !m_taskService) return;
 
+    // Проверяем наличие связанных задач через TaskService (актуальные данные)
     QList<Task*> tasks = m_taskService->filterByProject(project);
     if (!tasks.isEmpty()) {
         QMessageBox::warning(this, "Ошибка", "Нельзя удалить проект с привязанными задачами");

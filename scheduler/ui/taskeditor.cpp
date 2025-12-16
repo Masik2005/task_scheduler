@@ -3,6 +3,7 @@
 #include "../models/task.h"
 #include "../models/project.h"
 #include "../models/user.h"
+#include "appstyles.h"
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QFormLayout>
@@ -181,70 +182,14 @@ void TaskEditorDialog::onCancel()
 
 void TaskEditorDialog::applyStyles()
 {
-    setStyleSheet(
-        "QDialog {"
-        "    background-color: #f5f5f5;"
-        "}"
-        
-        "QLineEdit, QTextEdit, QDateTimeEdit, QComboBox, QSpinBox {"
-        "    border: 2px solid #bdc3c7;"
-        "    border-radius: 5px;"
-        "    padding: 8px;"
-        "    font-size: 11pt;"
-        "    background-color: white;"
-        "}"
-        
-        "QLineEdit:focus, QTextEdit:focus, QDateTimeEdit:focus, QComboBox:focus, QSpinBox:focus {"
-        "    border: 2px solid #3498db;"
-        "    background-color: #ecf0f1;"
-        "}"
-        
-        "QPushButton {"
-        "    background-color: #3498db;"
-        "    color: white;"
-        "    border: none;"
-        "    border-radius: 6px;"
-        "    padding: 10px 25px;"
-        "    font-size: 11pt;"
-        "    font-weight: bold;"
-        "    min-width: 100px;"
-        "}"
-        
-        "QPushButton:hover {"
-        "    background-color: #2980b9;"
-        "}"
-        
-        "QPushButton:pressed {"
-        "    background-color: #21618c;"
-        "}"
-        
-        "QLabel {"
-        "    color: #2c3e50;"
-        "    font-size: 11pt;"
-        "    font-weight: bold;"
-        "}"
-    );
+    setStyleSheet(AppStyles::getDialogStyles());
     
     if (m_okButton) {
-        m_okButton->setStyleSheet(
-            "QPushButton {"
-            "    background-color: #27ae60;"
-            "}"
-            "QPushButton:hover {"
-            "    background-color: #229954;"
-            "}"
-        );
+        m_okButton->setStyleSheet(AppStyles::getButtonStyles("ok"));
     }
     
     if (m_cancelButton) {
-        m_cancelButton->setStyleSheet(
-            "QPushButton {"
-            "    background-color: #95a5a6;"
-            "}"
-            "QPushButton:hover {"
-            "    background-color: #7f8c8d;"
-            "}"
-        );
+        m_cancelButton->setStyleSheet(AppStyles::getButtonStyles("cancel"));
     }
 }
 

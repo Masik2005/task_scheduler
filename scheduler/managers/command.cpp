@@ -12,6 +12,7 @@ void CommandManager::executeCommand(ICommand *command)
 {
     if (!command) return;
     
+    // Удаляем команды после текущей позиции (если есть) - новая ветка истории
     while (m_currentIndex < m_commands.size() - 1) {
         delete m_commands.takeLast();
     }
@@ -20,6 +21,7 @@ void CommandManager::executeCommand(ICommand *command)
     m_commands.append(command);
     m_currentIndex++;
     
+    // Ограничиваем размер истории для экономии памяти
     if (m_commands.size() > MAX_COMMANDS) {
         delete m_commands.takeFirst();
         m_currentIndex--;

@@ -7,6 +7,7 @@
 #include <QList>
 #include "../models/task.h"
 
+// Интерфейс команды (Command Pattern) для реализации undo/redo
 class ICommand : public QObject
 {
     Q_OBJECT
@@ -18,6 +19,7 @@ public:
     virtual QString getDescription() const = 0;
 };
 
+// Менеджер команд - хранит историю и управляет undo/redo
 class CommandManager : public QObject
 {
     Q_OBJECT

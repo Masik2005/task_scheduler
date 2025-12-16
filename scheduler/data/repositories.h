@@ -9,6 +9,8 @@
 class User;
 class Project;
 
+// Базовый интерфейс репозитория (Repository Pattern)
+// Инкапсулирует логику доступа к данным
 template<typename T>
 class IRepository
 {

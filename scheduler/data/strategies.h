@@ -9,6 +9,9 @@
 class User;
 class Project;
 
+// Интерфейсы стратегий (Strategy Pattern) для фильтрации и сортировки
+// Позволяет легко добавлять новые алгоритмы без изменения существующего кода
+
 class IFilterStrategy
 {
 public:

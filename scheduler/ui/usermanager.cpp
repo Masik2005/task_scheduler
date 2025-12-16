@@ -1,6 +1,7 @@
 #include "usermanager.h"
 #include "../data/taskservice.h"
 #include "../models/user.h"
+#include "appstyles.h"
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QFormLayout>
@@ -124,6 +125,7 @@ void UserManagerDialog::onDeleteUser()
     User *user = static_cast<User*>(item->data(Qt::UserRole).value<void*>());
     if (!user || !m_taskService) return;
     
+    // Проверяем наличие связанных задач через TaskService (актуальные данные)
     QList<Task*> userTasks = m_taskService->filterByUser(user);
     if (!userTasks.isEmpty()) {
         QMessageBox::warning(this, "Ошибка", 
@@ -162,102 +164,18 @@ void UserManagerDialog::onUserSelected(QListWidgetItem *item)
 
 void UserManagerDialog::applyStyles()
 {
-    setStyleSheet(
-        "QDialog {"
-        "    background-color: #f5f5f5;"
-        "}"
-        
-        "QListWidget {"
-        "    border: 2px solid #bdc3c7;"
-        "    border-radius: 8px;"
-        "    background-color: white;"
-        "    padding: 5px;"
-        "    font-size: 11pt;"
-        "}"
-        
-        "QListWidget::item {"
-        "    border: 1px solid #ecf0f1;"
-        "    border-radius: 5px;"
-        "    padding: 10px;"
-        "    margin: 3px;"
-        "    background-color: white;"
-        "}"
-        
-        "QListWidget::item:hover {"
-        "    background-color: #ecf0f1;"
-        "    border: 1px solid #3498db;"
-        "}"
-        
-        "QListWidget::item:selected {"
-        "    background-color: #3498db;"
-        "    color: white;"
-        "}"
-        
-        "QLineEdit {"
-        "    border: 2px solid #bdc3c7;"
-        "    border-radius: 5px;"
-        "    padding: 8px;"
-        "    font-size: 11pt;"
-        "    background-color: white;"
-        "}"
-        
-        "QLineEdit:focus {"
-        "    border: 2px solid #3498db;"
-        "}"
-        
-        "QPushButton {"
-        "    background-color: #3498db;"
-        "    color: white;"
-        "    border: none;"
-        "    border-radius: 6px;"
-        "    padding: 10px 20px;"
-        "    font-size: 11pt;"
-        "    font-weight: bold;"
-        "    min-width: 100px;"
-        "}"
-        
-        "QPushButton:hover {"
-        "    background-color: #2980b9;"
-        "}"
-        
-        "QLabel {"
-        "    color: #2c3e50;"
-        "    font-size: 11pt;"
-        "    font-weight: bold;"
-        "}"
-    );
+    setStyleSheet(AppStyles::getDialogStyles());
     
     if (m_addButton) {
-        m_addButton->setStyleSheet(
-            "QPushButton {"
-            "    background-color: #27ae60;"
-            "}"
-            "QPushButton:hover {"
-            "    background-color: #229954;"
-            "}"
-        );
+        m_addButton->setStyleSheet(AppStyles::getButtonStyles("add"));
     }
     
     if (m_editButton) {
-        m_editButton->setStyleSheet(
-            "QPushButton {"
-            "    background-color: #f39c12;"
-            "}"
-            "QPushButton:hover {"
-            "    background-color: #e67e22;"
-            "}"
-        );
+        m_editButton->setStyleSheet(AppStyles::getButtonStyles("edit"));
     }
 
     if (m_deleteButton) {
-        m_deleteButton->setStyleSheet(
-            "QPushButton {"
-            "    background-color: #e74c3c;"
-            "}"
-            "QPushButton:hover {"
-            "    background-color: #c0392b;"
-            "}"
-        );
+        m_deleteButton->setStyleSheet(AppStyles::getButtonStyles("delete"));
     }
 }
 

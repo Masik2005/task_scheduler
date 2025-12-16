@@ -37,6 +37,7 @@ SOURCES += \
         ui/usermanager.cpp \
         ui/projectmanager.cpp \
         ui/tasklistwidget.cpp \
+        ui/appstyles.cpp \
         data/taskrepository.cpp \
         data/userrepository.cpp \
         data/projectrepository.cpp \
@@ -55,6 +56,7 @@ HEADERS += \
         ui/usermanager.h \
         ui/projectmanager.h \
         ui/tasklistwidget.h \
+        ui/appstyles.h \
         data/repositories.h \
         data/strategies.h \
         data/taskrepository.h \

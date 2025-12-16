@@ -7,6 +7,7 @@ Task::Task(const QString &title, const QDateTime &deadline, Priority priority,
     : m_id(id), m_title(title), m_deadline(deadline), m_priority(priority),
       m_completed(false), m_owner(owner), m_project(project), m_reminderMinutes(reminderMinutes)
 {
+    // Автоматически добавляем задачу в список задач пользователя (двунаправленная связь)
     if (m_owner) {
         m_owner->addTask(this);
     }
@@ -46,6 +47,7 @@ void Task::setCompleted(bool completed)
 
 void Task::setOwner(User *owner)
 {
+    // При смене владельца обновляем связи в обе стороны
     if (m_owner != owner) {
         if (m_owner) {
             m_owner->removeTask(this);
@@ -100,7 +102,6 @@ Priority Task::stringToPriority(const QString &str)
     if (str == "Низкий" || str == "Low") return Priority::Low;
     if (str == "Средний" || str == "Medium") return Priority::Medium;
     if (str == "Высокий" || str == "High") return Priority::High;
-    if (str == "Критический" || str == "Critical") return Priority::Critical;
     return Priority::Medium;
 }
 

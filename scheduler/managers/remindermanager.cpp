@@ -6,6 +6,7 @@
 ReminderManager::ReminderManager(TaskService *taskService, QObject *parent)
     : QObject(parent), m_taskService(taskService)
 {
+    // Подписываемся на сигналы TaskService для автоматического управления напоминаниями
     if (m_taskService) {
         connect(m_taskService, &TaskService::taskAdded, this, &ReminderManager::onTaskAdded);
         connect(m_taskService, &TaskService::taskRemoved, this, &ReminderManager::onTaskRemoved);
@@ -17,12 +18,15 @@ ReminderManager::~ReminderManager()
     removeAllReminders();
 }
 
+// Добавляет напоминание для задачи
+// Если напоминание уже существует - удаляет старое и создает новое
 void ReminderManager::addReminder(Task *task, int minutesBeforeDeadline)
 {
     if (!task || task->isCompleted()) {
         return;
     }
     
+    // Удаляем старое напоминание если есть
     removeReminder(task);
     
     if (minutesBeforeDeadline < 2) {
@@ -30,11 +34,13 @@ void ReminderManager::addReminder(Task *task, int minutesBeforeDeadline)
     }
     
     Reminder *reminder = new Reminder(task, minutesBeforeDeadline, this);
+    // Подключаемся к сигналу срабатывания напоминания
     connect(reminder, &Reminder::reminderTriggered, this, &ReminderManager::onReminderTriggered);
     
     m_reminders.append(reminder);
-    reminder->activate();
+    reminder->activate(); // Запускаем таймер
     
+    // Подключаемся к сигналам задачи для отслеживания изменений
     connectTaskSignals(task);
 }
 
@@ -67,6 +73,8 @@ Reminder* ReminderManager::findReminderByTask(Task *task) const
     return nullptr;
 }
 
+// Обработчик срабатывания напоминания
+// Эмитирует сигнал для показа уведомления в UI
 void ReminderManager::onReminderTriggered(Reminder *reminder)
 {
     if (!reminder || !reminder->getTask()) {
@@ -75,6 +83,7 @@ void ReminderManager::onReminderTriggered(Reminder *reminder)
     
     Task *task = reminder->getTask();
     
+    // Не показываем напоминание для завершенных задач
     if (task->isCompleted()) {
         return;
     }
@@ -83,10 +92,13 @@ void ReminderManager::onReminderTriggered(Reminder *reminder)
                      .arg(task->getTitle())
                      .arg(reminder->getMinutesBeforeDeadline());
     
+    // Уведомляем UI (MainWindow покажет уведомление в системном трее)
     emit reminderNotification(message, task);
-    removeReminder(task);
+    removeReminder(task); // Удаляем напоминание после срабатывания
 }
 
+// Автоматически создает напоминание для новой задачи
+// Вызывается при получении сигнала taskAdded от TaskService
 void ReminderManager::onTaskAdded(Task *task)
 {
     if (task && !task->isCompleted()) {
@@ -105,6 +117,8 @@ void ReminderManager::onTaskRemoved(Task *task)
     }
 }
 
+// Подключается к сигналу taskChanged для автоматического обновления напоминания
+// при изменении дедлайна или статуса задачи
 void ReminderManager::connectTaskSignals(Task *task)
 {
     if (!task) {
@@ -115,8 +129,10 @@ void ReminderManager::connectTaskSignals(Task *task)
         Reminder *reminder = findReminderByTask(task);
         if (reminder) {
             if (task->isCompleted()) {
+                // Удаляем напоминание для завершенных задач
                 removeReminder(task);
             } else {
+                // Пересоздаем напоминание при изменении задачи (например, дедлайна)
                 int reminderMinutes = task->getReminderMinutes();
                 if (reminderMinutes < 2) {
                     reminderMinutes = 2;

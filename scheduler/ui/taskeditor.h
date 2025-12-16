@@ -12,6 +12,8 @@ class QComboBox;
 class QSpinBox;
 class QPushButton;
 
+// Диалог создания/редактирования задачи
+// Поддерживает оба режима в одном классе
 class TaskEditorDialog : public QDialog
 {
     Q_OBJECT

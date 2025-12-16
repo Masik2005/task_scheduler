@@ -28,6 +28,9 @@ class UserManagerDialog;
 class ProjectManagerDialog;
 class TaskListWidget;
 
+// Главное окно приложения - координатор UI компонентов
+// Использует TaskService для работы с данными, CommandManager для undo/redo,
+// ReminderManager для управления напоминаниями
 class MainWindow : public QMainWindow, private Ui::MainWindow
 {
     Q_OBJECT
@@ -37,11 +40,6 @@ public:
     ~MainWindow();
 
 private slots:
-    void onAddTask();
-    void onEditTask();
-    void onDeleteTask();
-    void onCompleteTask();
-    void onTaskDoubleClicked(QListWidgetItem *item);
     void onSearchTextChanged(const QString &text);
     void onFilterChanged();
     void onSortChanged();
@@ -64,10 +62,12 @@ private:
     void setupStatusBar();
     void updateTaskList();
     void updateStatusBar();
-    Task* getSelectedTask() const;
-    void showTaskInList(Task *task, QListWidgetItem *item);
     void applyStyles();
     void updateCompleteButtonText();
+    
+    // Вспомогательные методы для работы с диалогами
+    void showUserManagerDialog();
+    void showProjectManagerDialog();
     
     TaskService *m_taskService;
     CommandManager *m_commandManager;

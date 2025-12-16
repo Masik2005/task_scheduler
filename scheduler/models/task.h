@@ -8,13 +8,15 @@
 class Project;
 class User;
 
+// Приоритет задачи
 enum class Priority {
     Low = 0,
     Medium = 1,
     High = 2,
-    Critical = 3
 };
 
+// Модель задачи - основная сущность приложения
+// Наследуется от QObject для поддержки сигналов/слотов Qt
 class Task : public QObject
 {
     Q_OBJECT
@@ -53,6 +55,7 @@ public:
     static Priority stringToPriority(const QString &str);
 
 signals:
+    // Эмитируется при любом изменении задачи (для обновления UI и напоминаний)
     void taskChanged();
 
 private:

@@ -9,6 +9,8 @@ class Project;
 class QLineEdit;
 class QPushButton;
 
+// Диалог управления проектами
+// Использует TaskService для проверки связанных задач при удалении
 class ProjectManagerDialog : public QDialog
 {
     Q_OBJECT

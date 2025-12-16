@@ -7,6 +7,8 @@
 
 class Task;
 
+// Модель напоминания - использует QTimer для отсчета времени до дедлайна
+// Эмитирует сигнал при срабатывании
 class Reminder : public QObject
 {
     Q_OBJECT
